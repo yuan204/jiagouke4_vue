@@ -1,252 +1,391 @@
 (function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-  typeof define === 'function' && define.amd ? define(factory) :
-  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, global.Vue = factory());
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global = typeof globalThis !== 'undefined' ? globalThis : global || self, global.Vue = factory());
 })(this, (function () { 'use strict';
 
-  function _typeof(obj) {
-    "@babel/helpers - typeof";
+    var ncname = "[a-zA-Z_][\\-\\.0-9_a-zA-Z]*"; // 用来描述标签的
 
-    if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") {
-      _typeof = function (obj) {
-        return typeof obj;
-      };
-    } else {
-      _typeof = function (obj) {
-        return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj;
-      };
-    }
+    var qnameCapture = "((?:".concat(ncname, "\\:)?").concat(ncname, ")");
+    var startTagOpen = new RegExp("^<".concat(qnameCapture)); // 标签开头的正则 捕获的内容是标签名
 
-    return _typeof(obj);
-  }
+    var endTag = new RegExp("^<\\/".concat(qnameCapture, "[^>]*>")); // 匹配标签结尾的  捕获的是结束标签的标签名
 
-  function _classCallCheck(instance, Constructor) {
-    if (!(instance instanceof Constructor)) {
-      throw new TypeError("Cannot call a class as a function");
-    }
-  }
+    var attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/; // 匹配属性的  分组1 拿到的是属性名  , 分组3 ，4， 5 拿到的是key对应的值
 
-  function _defineProperties(target, props) {
-    for (var i = 0; i < props.length; i++) {
-      var descriptor = props[i];
-      descriptor.enumerable = descriptor.enumerable || false;
-      descriptor.configurable = true;
-      if ("value" in descriptor) descriptor.writable = true;
-      Object.defineProperty(target, descriptor.key, descriptor);
-    }
-  }
+    var startTagClose = /^\s*(\/?)>/; // 匹配标签结束的    />    >   
 
-  function _createClass(Constructor, protoProps, staticProps) {
-    if (protoProps) _defineProperties(Constructor.prototype, protoProps);
-    if (staticProps) _defineProperties(Constructor, staticProps);
-    return Constructor;
-  }
-
-  var oldArrayPrototype = Array.prototype; // arrayProptotype.__proto__ = Array.prototype;
-
-  var arrayPrototype = Object.create(oldArrayPrototype);
-  var methods = ['push', 'pop', 'shift', 'unshift', 'reverse', 'sort', 'splice'];
-  methods.forEach(function (method) {
-    // 用户调用push方法会先经历我自己重写的方法,之后调用数组原来的方法
-    arrayPrototype[method] = function () {
-      var _oldArrayPrototype$me;
-
-      console.log('数组修改了');
-      var inserted;
-      var ob = this.__ob__;
-
-      for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
-        args[_key] = arguments[_key];
+    function parserHTML(html) {
+      function advance(n) {
+        html = html.substring(n); // 每次根据传入的长度截取html
       }
 
-      switch (method) {
-        case 'push':
-        case 'unshift':
-          inserted = args; // 数组
+      var root; // 树的操作 ，需要根据开始标签和结束标签产生一个树
+      // 如何构建树的父子关系
 
-          break;
+      var stack = [];
 
-        case 'splice':
-          // arr.splice(1,1,xxx)
-          inserted = args.slice(2);
+      function createASTElement(tagName, attrs) {
+        return {
+          tag: tagName,
+          attrs: attrs,
+          children: [],
+          parent: null,
+          type: 1
+        };
       }
 
-      if (inserted) {
-        // 对新增的数据再次进行观测
-        ob.observeArray(inserted);
+      function start(tagName, attrs) {
+        var element = createASTElement(tagName, attrs);
+
+        if (root == null) {
+          root = element;
+        }
+
+        var parent = stack[stack.length - 1]; // 取到栈中的最后一个
+
+        if (parent) {
+          element.parent = parent; // 让这个元素记住自己的父亲是谁
+
+          parent.children.push(element); // 让父亲记住儿子是谁
+        }
+
+        stack.push(element); // 将元素放到栈中
       }
 
-      return (_oldArrayPrototype$me = oldArrayPrototype[method]).call.apply(_oldArrayPrototype$me, [this].concat(args));
-    };
-  });
+      function end(tagName) {
+        stack.pop();
+      }
 
-  var Observer = /*#__PURE__*/function () {
-    function Observer(data) {
-      _classCallCheck(this, Observer);
+      function chars(text) {
+        text = text.replace(/\s/g, '');
 
-      // 如果是数组的话也是用defineProperty会浪费很多性能 很少用户会通过arr[878] = 123
-      // vue3中的polyfill 直接就给数组做代理了
-      // 改写数组的方法，如果用户调用了可以改写数组方法的api 那么我就去劫持这个方法
-      // 变异方法 push pop shift unshift reverse sort splice 
-      Object.defineProperty(data, '__ob__', {
-        value: this,
-        enumerable: false
-      }); // 如果有__ob__属性 说明被观测过了
-      // 修改数组的索引和长度是无法更新视图的
+        if (text) {
+          var parent = stack[stack.length - 1];
+          parent.children.push({
+            type: 3,
+            text: text
+          });
+        }
+      } //  </div>
 
-      if (Array.isArray(data)) {
-        // 需要重写这7个方法
-        data.__proto__ = arrayPrototype; // 直接将属性赋值给这个对象
-        // 如果数组里面放的是对象类型 我期望他也会被变成响应式的
 
-        this.observeArray(data);
+      while (html) {
+        // 一个个字符来解析将结果抛出去
+        var textEnd = html.indexOf('<');
+
+        if (textEnd === 0) {
+          var startTagMatch = parseStartTag(); // 解析开始标签  {tag:'div',attrs:[{name:"id",value:"app"}]}
+
+          if (startTagMatch) {
+            start(startTagMatch.tagName, startTagMatch.attrs);
+            continue;
+          }
+
+          var matches = void 0;
+
+          if (matches = html.match(endTag)) {
+            // <div>    </div>  不是开始就会走道结束
+            end(matches[1]);
+            advance(matches[0].length);
+            continue;
+          }
+        }
+
+        var text = void 0;
+
+        if (textEnd >= 0) {
+          text = html.substring(0, textEnd);
+        }
+
+        if (text) {
+          advance(text.length);
+          chars(text);
+        }
+      }
+
+      function parseStartTag() {
+        var matches = html.match(startTagOpen);
+
+        if (matches) {
+          var match = {
+            tagName: matches[1],
+            attrs: []
+          };
+          advance(matches[0].length); // 继续解析开始标签的属性 
+
+          var _end, attr;
+
+          while (!(_end = html.match(startTagClose)) && (attr = html.match(attribute))) {
+            // 只要没有匹配到结束标签就一直匹配
+            match.attrs.push({
+              name: attr[1],
+              value: attr[3] || attr[4] || attr[5] || true
+            });
+            advance(attr[0].length); // 解析一个属性删除一个
+          }
+
+          if (_end) {
+            advance(_end[0].length);
+            return match;
+          }
+        }
+      }
+
+      return root;
+    }
+
+    function compileToFunction(template) {
+      var ast = parserHTML(template);
+      console.log(ast);
+    } // 将template转化成ast语法树 -》 再讲语法树转化成一个字符串拼接在一起
+    // ast 是用来描述语言本身的
+    // vdom 描述dom元素的
+
+    function _typeof(obj) {
+      "@babel/helpers - typeof";
+
+      if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") {
+        _typeof = function (obj) {
+          return typeof obj;
+        };
       } else {
-        this.walk(data);
+        _typeof = function (obj) {
+          return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj;
+        };
+      }
+
+      return _typeof(obj);
+    }
+
+    function _classCallCheck(instance, Constructor) {
+      if (!(instance instanceof Constructor)) {
+        throw new TypeError("Cannot call a class as a function");
       }
     }
 
-    _createClass(Observer, [{
-      key: "observeArray",
-      value: function observeArray(data) {
-        data.forEach(function (item) {
-          return observe(item);
-        }); //如果是对象我才进行观测了  
+    function _defineProperties(target, props) {
+      for (var i = 0; i < props.length; i++) {
+        var descriptor = props[i];
+        descriptor.enumerable = descriptor.enumerable || false;
+        descriptor.configurable = true;
+        if ("value" in descriptor) descriptor.writable = true;
+        Object.defineProperty(target, descriptor.key, descriptor);
       }
-    }, {
-      key: "walk",
-      value: function walk(data) {
-        // 循环对象 尽量不用for in （会遍历原型链）
-        var keys = Object.keys(data); // [0,1,2]
+    }
 
-        keys.forEach(function (key) {
-          //没有重写数组里的每一项
-          defineReactive(data, key, data[key]);
-        });
-      }
-    }]);
+    function _createClass(Constructor, protoProps, staticProps) {
+      if (protoProps) _defineProperties(Constructor.prototype, protoProps);
+      if (staticProps) _defineProperties(Constructor, staticProps);
+      return Constructor;
+    }
 
-    return Observer;
-  }(); // 性能不好的原因在于 所有的属性都被重新定义了一遍
-  // 一上来需要将对象深度代理 性能差
+    var oldArrayPrototype = Array.prototype; // arrayProptotype.__proto__ = Array.prototype;
 
+    var arrayPrototype = Object.create(oldArrayPrototype);
+    var methods = ['push', 'pop', 'shift', 'unshift', 'reverse', 'sort', 'splice'];
+    methods.forEach(function (method) {
+      // 用户调用push方法会先经历我自己重写的方法,之后调用数组原来的方法
+      arrayPrototype[method] = function () {
+        var _oldArrayPrototype$me;
 
-  function defineReactive(data, key, value) {
-    //  闭包
-    // 属性会全部被重写增加了get和set
-    observe(value); // 递归代理属性
+        console.log('数组修改了');
+        var inserted;
+        var ob = this.__ob__;
 
-    Object.defineProperty(data, key, {
-      get: function get() {
-        // vm.xxx
-        return value;
-      },
-      set: function set(newValue) {
-        // vm.xxx = {a:1} 赋值一个对象的话 也可以实现响应式数据
-        if (newValue === value) return;
-        observe(newValue);
-        value = newValue;
-      }
+        for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+          args[_key] = arguments[_key];
+        }
+
+        switch (method) {
+          case 'push':
+          case 'unshift':
+            inserted = args; // 数组
+
+            break;
+
+          case 'splice':
+            // arr.splice(1,1,xxx)
+            inserted = args.slice(2);
+        }
+
+        if (inserted) {
+          // 对新增的数据再次进行观测
+          ob.observeArray(inserted);
+        }
+
+        return (_oldArrayPrototype$me = oldArrayPrototype[method]).call.apply(_oldArrayPrototype$me, [this].concat(args));
+      };
     });
-  }
 
-  function observe(data) {
-    if (_typeof(data) !== 'object' || data == null) {
-      return; // 如果不是对象类型，那么不要做任何处理
-    }
+    var Observer = /*#__PURE__*/function () {
+      function Observer(data) {
+        _classCallCheck(this, Observer);
 
-    if (data.__ob__) {
-      // 说明这个属性已经被代理过了
-      return data;
-    } // 我稍后要区分 如果一个对象已经被观测了，就不要再次被观测了
-    // __ob__ 标识是否有被观测过
+        // 如果是数组的话也是用defineProperty会浪费很多性能 很少用户会通过arr[878] = 123
+        // vue3中的polyfill 直接就给数组做代理了
+        // 改写数组的方法，如果用户调用了可以改写数组方法的api 那么我就去劫持这个方法
+        // 变异方法 push pop shift unshift reverse sort splice 
+        Object.defineProperty(data, '__ob__', {
+          value: this,
+          enumerable: false
+        }); // 如果有__ob__属性 说明被观测过了
+        // 修改数组的索引和长度是无法更新视图的
 
+        if (Array.isArray(data)) {
+          // 需要重写这7个方法
+          data.__proto__ = arrayPrototype; // 直接将属性赋值给这个对象
+          // 如果数组里面放的是对象类型 我期望他也会被变成响应式的
 
-    return new Observer(data);
-  }
-  // 每个实例可以通过__proto__ 找到所属类的prototype对应的内容
-  // 1.在Vue2中对象的响应式原理，就是给每个属性增加get和set，而且是递归操作 （用户在写代码的时候尽量不要把所有的属性都放在data中，层次尽可能不要太深）, 赋值一个新对象也会被变成响应式的
-  // 2.数组没有使用defineProperty 采用的是函数劫持创造一个新的原型重写了这个原型的7个方法，用户在调用的时候采用的是这7个方法。我们增加了逻辑如果是新增的数据会再次被劫持 。 最终调用数组的原有方法 （注意数字的索引和长度没有被监控）  数组中对象类型会被进行响应式处理
-
-  function initState(vm) {
-    var options = vm.$options; // 后续实现计算属性 、 watcher 、 props 、methods
-
-    if (options.data) {
-      initData(vm);
-    }
-  }
-
-  function proxy(vm, source, key) {
-    Object.defineProperty(vm, key, {
-      get: function get() {
-        return vm[source][key];
-      },
-      set: function set(newValue) {
-        vm[source][key] = newValue;
-      }
-    });
-  }
-
-  function initData(vm) {
-    var data = vm.$options.data; // 如果是函数就拿到函数的返回值 否则就直接采用data作为数据源
-
-    data = vm._data = typeof data === 'function' ? data.call(vm) : data; // 属性劫持 采用defineProperty将所有的属性进行劫持
-    // 我期望用户可以直接通过 vm.xxx 获取值， 也可以这样取值 vm._data.xxx
-
-    for (var key in data) {
-      proxy(vm, '_data', key);
-    }
-
-    observe(data);
-  }
-
-  function initMixin(Vue) {
-    Vue.prototype._init = function (options) {
-      var vm = this;
-      vm.$options = options; // 所有后续的扩展方法都有一个$options选项可以获取用户的所有选项
-      // 对于实例的数据源 props data methods computed watch
-      // props data
-
-      initState(vm); // vue中会判断如果是$开头的属性不会被变成响应式数据
-      // 状态初始化完毕后需要进行页面挂载
-
-      if (vm.$options.el) {
-        // el 属性 和直接调用$mount是一样的
-        vm.$mount(vm.$options.el);
-      }
-    };
-
-    Vue.prototype.$mount = function (el) {
-      var vm = this;
-      el = document.querySelector(el);
-      var options = vm.$options;
-
-      if (!options.render) {
-        var template = options.template;
-
-        if (!template) {
-          template = el.outerHTML;
-        } // 将template变成render函数
-        // 创建render函数 -》 虚拟dom  -》 渲染真实dom
-
-
-        var render = compileToFunction(template); // 开始编译
-
-        options.render = render;
+          this.observeArray(data);
+        } else {
+          this.walk(data);
+        }
       }
 
-      options.render; // 一定存在了
-    };
-  }
+      _createClass(Observer, [{
+        key: "observeArray",
+        value: function observeArray(data) {
+          data.forEach(function (item) {
+            return observe(item);
+          }); //如果是对象我才进行观测了  
+        }
+      }, {
+        key: "walk",
+        value: function walk(data) {
+          // 循环对象 尽量不用for in （会遍历原型链）
+          var keys = Object.keys(data); // [0,1,2]
 
-  // 整个自己编写的Vue的入口
+          keys.forEach(function (key) {
+            //没有重写数组里的每一项
+            defineReactive(data, key, data[key]);
+          });
+        }
+      }]);
 
-  function Vue(options) {
-    this._init(options);
-  }
+      return Observer;
+    }(); // 性能不好的原因在于 所有的属性都被重新定义了一遍
+    // 一上来需要将对象深度代理 性能差
 
-  initMixin(Vue); // 后续在扩展都可以采用这种方式
 
-  return Vue;
+    function defineReactive(data, key, value) {
+      //  闭包
+      // 属性会全部被重写增加了get和set
+      observe(value); // 递归代理属性
+
+      Object.defineProperty(data, key, {
+        get: function get() {
+          // vm.xxx
+          return value;
+        },
+        set: function set(newValue) {
+          // vm.xxx = {a:1} 赋值一个对象的话 也可以实现响应式数据
+          if (newValue === value) return;
+          observe(newValue);
+          value = newValue;
+        }
+      });
+    }
+
+    function observe(data) {
+      if (_typeof(data) !== 'object' || data == null) {
+        return; // 如果不是对象类型，那么不要做任何处理
+      }
+
+      if (data.__ob__) {
+        // 说明这个属性已经被代理过了
+        return data;
+      } // 我稍后要区分 如果一个对象已经被观测了，就不要再次被观测了
+      // __ob__ 标识是否有被观测过
+
+
+      return new Observer(data);
+    }
+    // 每个实例可以通过__proto__ 找到所属类的prototype对应的内容
+    // 1.在Vue2中对象的响应式原理，就是给每个属性增加get和set，而且是递归操作 （用户在写代码的时候尽量不要把所有的属性都放在data中，层次尽可能不要太深）, 赋值一个新对象也会被变成响应式的
+    // 2.数组没有使用defineProperty 采用的是函数劫持创造一个新的原型重写了这个原型的7个方法，用户在调用的时候采用的是这7个方法。我们增加了逻辑如果是新增的数据会再次被劫持 。 最终调用数组的原有方法 （注意数字的索引和长度没有被监控）  数组中对象类型会被进行响应式处理
+
+    function initState(vm) {
+      var options = vm.$options; // 后续实现计算属性 、 watcher 、 props 、methods
+
+      if (options.data) {
+        initData(vm);
+      }
+    }
+
+    function proxy(vm, source, key) {
+      Object.defineProperty(vm, key, {
+        get: function get() {
+          return vm[source][key];
+        },
+        set: function set(newValue) {
+          vm[source][key] = newValue;
+        }
+      });
+    }
+
+    function initData(vm) {
+      var data = vm.$options.data; // 如果是函数就拿到函数的返回值 否则就直接采用data作为数据源
+
+      data = vm._data = typeof data === 'function' ? data.call(vm) : data; // 属性劫持 采用defineProperty将所有的属性进行劫持
+      // 我期望用户可以直接通过 vm.xxx 获取值， 也可以这样取值 vm._data.xxx
+
+      for (var key in data) {
+        proxy(vm, '_data', key);
+      }
+
+      observe(data);
+    }
+
+    function initMixin(Vue) {
+      Vue.prototype._init = function (options) {
+        var vm = this;
+        vm.$options = options; // 所有后续的扩展方法都有一个$options选项可以获取用户的所有选项
+        // 对于实例的数据源 props data methods computed watch
+        // props data
+
+        initState(vm); // vue中会判断如果是$开头的属性不会被变成响应式数据
+        // 状态初始化完毕后需要进行页面挂载
+
+        if (vm.$options.el) {
+          // el 属性 和直接调用$mount是一样的
+          vm.$mount(vm.$options.el);
+        }
+      };
+
+      Vue.prototype.$mount = function (el) {
+        var vm = this;
+        el = document.querySelector(el);
+        var options = vm.$options;
+
+        if (!options.render) {
+          var template = options.template;
+
+          if (!template) {
+            template = el.outerHTML;
+          } // 将template变成render函数
+          // 创建render函数 -》 虚拟dom  -》 渲染真实dom
+
+
+          var render = compileToFunction(template); // 开始编译
+
+          options.render = render;
+        }
+
+        options.render; // 一定存在了
+      }; // diff算法 主要是两个虚拟节点的比对  我们需要根据模板渲染出一个render函数，render函数可以返回一个虚拟节点 ,数据更新了重新调用render函数 可以再返回一个虚拟节点，
+
+    }
+
+    // 整个自己编写的Vue的入口
+
+    function Vue(options) {
+      this._init(options);
+    }
+
+    initMixin(Vue); // 后续在扩展都可以采用这种方式
+
+    return Vue;
 
 }));
 //# sourceMappingURL=vue.js.map

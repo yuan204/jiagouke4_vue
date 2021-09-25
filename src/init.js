@@ -1,3 +1,4 @@
+import { compileToFunction } from "./compiler/index";
 import { initState } from "./state";
 
 export default function initMixin(Vue) {
@@ -34,4 +35,8 @@ export default function initMixin(Vue) {
         }
         options.render // 一定存在了
     }
+
+    // diff算法 主要是两个虚拟节点的比对  我们需要根据模板渲染出一个render函数，render函数可以返回一个虚拟节点 ,数据更新了重新调用render函数 可以再返回一个虚拟节点，
 }
+
+
