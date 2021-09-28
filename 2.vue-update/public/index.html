@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script src="../dist/vue.js"></script>
+    <div id="app">
+        <span>{{name}}</span>
+        <span>{{name}}</span>
+        <i>{{age}}</i>
+    </div>
+    <script>
+        let vm = new Vue({
+            el:'#app',
+            data:{
+                name:'zf',
+                age:12,
+                address:'霍营'
+            }
+        });
+        setTimeout(() => {
+            vm.name = 'jw';
+            // vm._update(vm._render()); // 直接默认强制更新，有可能数据没有变化但是我强制的让页面发生一次渲染
+        }, 1000);
+
+        //  渲染Watcher 默认情况下创造一个组件 就会生成一个渲染watcher
+    </script>
+</body>
+
+</html>
+
+
