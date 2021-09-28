@@ -11,9 +11,7 @@
 <body>
     <script src="../dist/vue.js"></script>
     <div id="app">
-        <span>{{name}}</span>
-        <span>{{name}}</span>
-        <i>{{age}}</i>
+        {{name}}
     </div>
     <script>
         let vm = new Vue({
@@ -21,12 +19,22 @@
             data:{
                 name:'zf',
                 age:12,
-                address:'霍营'
+                address:'霍营',
+                arr:[[1,2,3],{}] // 数组嵌套的情况没有处理， 也需要让里层也收集依赖
             }
         });
         setTimeout(() => {
-            vm.name = 'jw';
             // vm._update(vm._render()); // 直接默认强制更新，有可能数据没有变化但是我强制的让页面发生一次渲染
+            vm.name = 'jw'; // 更新id为0的watcher
+            vm.name = 'zf'; // 更新id为0的watcher
+            vm.name = 'jw';  //更新id为0的watcher  => 更新id为0的watcher
+
+
+            // 我们不想在多开一个异步任务 我期望的是 公用一个异步任务
+
+            vm.$nextTick(()=>{
+                console.log(document.querySelector('div').innerHTML)
+            })
         }, 1000);
 
         //  渲染Watcher 默认情况下创造一个组件 就会生成一个渲染watcher

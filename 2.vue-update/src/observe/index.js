@@ -1,12 +1,18 @@
 import arrayPrototype from "./array";
 import Dep from "./dep";
 
+// 1.给每个对象和数组也增加dep属性
+// 2.当页面取值的时候回执行get方法， 拿到刚才新增的dep属性，让她记住这个watcher
+// 3.稍后数据变化 触发当前数组的dep中存放的watcher去更新
+
 class Observer{
-    constructor(data){
+    constructor(data){ // data 的类型是对象也可能是数组
         // 如果是数组的话也是用defineProperty会浪费很多性能 很少用户会通过arr[878] = 123
         // vue3中的polyfill 直接就给数组做代理了
          // 改写数组的方法，如果用户调用了可以改写数组方法的api 那么我就去劫持这个方法
         // 变异方法 push pop shift unshift reverse sort splice 
+
+        this.dep = new Dep(); // 给所有的对象都增加一个dep, 后续我们会给对象增添新的属性也期望能实现更新
         Object.defineProperty(data,'__ob__',{
             value:this,
             enumerable:false
@@ -35,20 +41,35 @@ class Observer{
 }
 // 性能不好的原因在于 所有的属性都被重新定义了一遍
 // 一上来需要将对象深度代理 性能差
+function dependArray(value){
+    for(let i = 0; i < value.length;i++){
+        let temp = value[i];
+        temp.__ob__ && temp.__ob__.dep.depend(); // 让数组中的对象类型做依赖收集  [[[]]]
+        if(Array.isArray(temp)){
+            dependArray(temp)
+        }
+    }
+}
 function defineReactive(data,key,value){ //  闭包
     // 属性会全部被重写增加了get和set
     let dep = new Dep()
-    observe(value); // 递归代理属性
+    let childOb = observe(value); // 递归代理属性 , childOb就是当前的实例
     Object.defineProperty(data,key,{
         get(){ // vm.xxx
             if(Dep.target){
-               dep.depend() 
+               dep.depend()  // 依赖收集 要将属性收集对应的watcher
+               if(childOb){
+                childOb.dep.depend(); // 让数组和对象也记录一下渲染watcher
+                if(Array.isArray(value)){
+                    dependArray(value);
+                }
+               }
             }
             return value;
         },
         set(newValue){ // vm.xxx = {a:1} 赋值一个对象的话 也可以实现响应式数据
             if(newValue === value) return
-            observe(newValue)
+            childOb = observe(newValue)
             value = newValue;
             dep.notify(); // 通知依赖的watcher去重新渲染
         }

@@ -13,10 +13,6 @@ let methods = [
 ]
 methods.forEach(method => { // 用户调用push方法会先经历我自己重写的方法,之后调用数组原来的方法
     arrayPrototype[method] = function(...args) {
-
-        console.log('数组修改了')
-
-
         let inserted;
         let ob = this.__ob__;
         switch (method) {
@@ -33,7 +29,10 @@ methods.forEach(method => { // 用户调用push方法会先经历我自己重写
             // 对新增的数据再次进行观测
             ob.observeArray(inserted)
         }
-        return oldArrayPrototype[method].call(this, ...args)
+        let result =  oldArrayPrototype[method].call(this, ...args)
+        // 更新页面...  靠的都是watcher数组并没有收集watcher
+        ob.dep.notify();
+        return result
     }
 })
 export default arrayPrototype

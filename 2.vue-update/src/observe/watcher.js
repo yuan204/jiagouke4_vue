@@ -1,4 +1,5 @@
 import Dep from "./dep";
+import { queueWatcher } from "./schedular";
 let wid = 0;
 class Watcher{
     constructor(vm,fn,cb,options){
@@ -27,9 +28,16 @@ class Watcher{
         }
     }
     update(){
-        this.get()
+        queueWatcher(this);
+    }
+    run(){
+        console.log('run')
+        this.get();
     }
 }
+
+
+
 // 让属性记住对应的渲染函数，如果属性发生变化就调用对应的渲染函数
 
 // 我们给每个属性增加一个收集器， 通过收集器来收集watcher

@@ -361,6 +361,91 @@
 
   Dep.target = null; // 描述当前watcher是谁的
 
+  var callbacks = [];
+  var waiting = false;
+
+  function flushCallbacks() {
+    callbacks.forEach(function (cb) {
+      return cb();
+    });
+    callbacks = [];
+    waiting = false;
+  } // 异步任务分为 两种 宏任务、微任务
+  // 宏任务 setTimeout setImmediate(ie下支持性能优于setTimeout)
+  // 微任务 promise.then mutationObserver
+  // vue在更新的时候希望尽快的更新页面 promise.then  mutationObserver  setImmediate setTimeout
+  // vue3不在考虑兼容性问题了 所以后续vue3中直接使用promise.then
+
+
+  var timeFunc;
+
+  if (typeof Promise !== 'undefined') {
+    var p = Promise.resolve();
+
+    timeFunc = function timeFunc() {
+      p.then(flushCallbacks);
+    };
+  } else if (typeof MutationObserver !== 'undefined') {
+    var observer = new MutationObserver(flushCallbacks); // mutationObserver放的回调是异步执行的
+
+    var textNode = document.createTextNode(1); //. 文本节点内容先是1
+
+    observer.observe(textNode, {
+      characterData: true
+    });
+
+    timeFunc = function timeFunc() {
+      textNode.textContent = 2; // 改成了2  就会触发更新了
+    };
+  } else if (typeof setImmediate !== 'undefined') {
+    timeFunc = function timeFunc() {
+      setImmediate(flushCallbacks);
+    };
+  } else {
+    timeFunc = function timeFunc() {
+      setTimeout(flushCallbacks, 0);
+    };
+  }
+
+  function nextTick(cb) {
+    callbacks.push(cb);
+
+    if (!waiting) {
+      waiting = true;
+      timeFunc();
+    }
+  }
+
+  var queue = [];
+  var has = {};
+  var pending = false;
+
+  function flushSchedularQueue() {
+    queue.forEach(function (watcher) {
+      return watcher.run();
+    });
+    queue = [];
+    has = {};
+    pending = false;
+  }
+
+  function queueWatcher(watcher) {
+    var id = watcher.id;
+
+    if (has[id] == null) {
+      queue.push(watcher);
+      has[id] = true;
+
+      if (!pending) {
+        nextTick(function () {
+          // 万一一个属性 对应多个更新，那么可能会开启多个定时器
+          flushSchedularQueue(); // 批处理操作 ， 防抖
+        });
+        pending = true;
+      }
+    }
+  }
+
   var wid = 0;
 
   var Watcher = /*#__PURE__*/function () {
@@ -400,6 +485,12 @@
     }, {
       key: "update",
       value: function update() {
+        queueWatcher(this);
+      }
+    }, {
+      key: "run",
+      value: function run() {
+        console.log('run');
         this.get();
       }
     }]);
@@ -529,7 +620,6 @@
     arrayPrototype[method] = function () {
       var _oldArrayPrototype$me;
 
-      console.log('数组修改了');
       var inserted;
       var ob = this.__ob__;
 
@@ -554,18 +644,28 @@
         ob.observeArray(inserted);
       }
 
-      return (_oldArrayPrototype$me = oldArrayPrototype[method]).call.apply(_oldArrayPrototype$me, [this].concat(args));
+      var result = (_oldArrayPrototype$me = oldArrayPrototype[method]).call.apply(_oldArrayPrototype$me, [this].concat(args)); // 更新页面...  靠的都是watcher数组并没有收集watcher
+
+
+      ob.dep.notify();
+      return result;
     };
   });
+
+  // 2.当页面取值的时候回执行get方法， 拿到刚才新增的dep属性，让她记住这个watcher
+  // 3.稍后数据变化 触发当前数组的dep中存放的watcher去更新
 
   var Observer = /*#__PURE__*/function () {
     function Observer(data) {
       _classCallCheck(this, Observer);
 
+      // data 的类型是对象也可能是数组
       // 如果是数组的话也是用defineProperty会浪费很多性能 很少用户会通过arr[878] = 123
       // vue3中的polyfill 直接就给数组做代理了
       // 改写数组的方法，如果用户调用了可以改写数组方法的api 那么我就去劫持这个方法
       // 变异方法 push pop shift unshift reverse sort splice 
+      this.dep = new Dep(); // 给所有的对象都增加一个dep, 后续我们会给对象增添新的属性也期望能实现更新
+
       Object.defineProperty(data, '__ob__', {
         value: this,
         enumerable: false
@@ -608,17 +708,36 @@
   // 一上来需要将对象深度代理 性能差
 
 
+  function dependArray(value) {
+    for (var i = 0; i < value.length; i++) {
+      var temp = value[i];
+      temp.__ob__ && temp.__ob__.dep.depend(); // 让数组中的对象类型做依赖收集  [[[]]]
+
+      if (Array.isArray(temp)) {
+        dependArray(temp);
+      }
+    }
+  }
+
   function defineReactive(data, key, value) {
     //  闭包
     // 属性会全部被重写增加了get和set
     var dep = new Dep();
-    observe(value); // 递归代理属性
+    var childOb = observe(value); // 递归代理属性 , childOb就是当前的实例
 
     Object.defineProperty(data, key, {
       get: function get() {
         // vm.xxx
         if (Dep.target) {
-          dep.depend();
+          dep.depend(); // 依赖收集 要将属性收集对应的watcher
+
+          if (childOb) {
+            childOb.dep.depend(); // 让数组和对象也记录一下渲染watcher
+
+            if (Array.isArray(value)) {
+              dependArray(value);
+            }
+          }
         }
 
         return value;
@@ -626,7 +745,7 @@
       set: function set(newValue) {
         // vm.xxx = {a:1} 赋值一个对象的话 也可以实现响应式数据
         if (newValue === value) return;
-        observe(newValue);
+        childOb = observe(newValue);
         value = newValue;
         dep.notify(); // 通知依赖的watcher去重新渲染
       }
@@ -733,7 +852,8 @@
 
   initMixin(Vue); // 后续在扩展都可以采用这种方式
 
-  lifeCycleMixin(Vue); // 给Vue添加原型方法我们通过文件的方式来添加，防止所有的功能都在一个文件中来处理
+  lifeCycleMixin(Vue);
+  Vue.prototype.$nextTick = nextTick; // 给Vue添加原型方法我们通过文件的方式来添加，防止所有的功能都在一个文件中来处理
 
   return Vue;
 
