@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+
+    <div id="app">
+        <li v-for="(f,index) in arr" :key="index"><input type="checkbox">{{f}}</li>
+
+        <button @click="add">点击添加</button>
+    </div>
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.14/vue.js"></script>
+    <script>
+        let vm = new Vue({
+            el:'#app',
+            data:{
+                arr:['香蕉','苹果','橘子']
+            },
+            methods:{
+                add(){
+                    this.arr.unshift('橙子')
+                }
+            }
+        })
+    </script>
+</body>
+</html>

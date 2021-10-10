@@ -133,19 +133,71 @@ function updateChildren(el, oldChildren, newChildren) {
     let newEndVnode = newChildren[newEndIndex];
 
     // 有一方比完就停止  儿子的规模变大而变大 O(n)
-    while (oldStartIndex <= oldEndIndex && newStartIndex <= newEndIndex) {
 
+    function makeIndexByKey(children) {
+        return children.reduce((memo, current, index) => (memo[current.key] = index, memo), {})
+    }
+    let map = makeIndexByKey(oldChildren);
+    while (oldStartIndex <= oldEndIndex && newStartIndex <= newEndIndex) {
+        // 这里在优化dom的常见操作 向前追加 向后追加  尾部移动头部
         // 复用节点
-        if (isSameVnode(oldStartVnode, newStartVnode)) { // 说明两个元素是同一个元素 要比较属性，和他的儿子
+        if (!oldStartVnode) {
+            oldStartVnode = oldChildren[++oldStartIndex]
+        } else if (!oldEndVnode) {
+            oldEndVnode = oldChildren[--oldEndIndex]
+        } else if (isSameVnode(oldStartVnode, newStartVnode)) { // 说明两个元素是同一个元素 要比较属性，和他的儿子
             patchVnode(oldStartVnode, newStartVnode);
             oldStartVnode = oldChildren[++oldStartIndex];
             newStartVnode = newChildren[++newStartIndex];
+        } else if (isSameVnode(oldEndVnode, newEndVnode)) {
+            patchVnode(oldEndVnode, newEndVnode);
+            oldEndVnode = oldChildren[--oldEndIndex];
+            newEndVnode = newChildren[--newEndIndex];
+        } else if (isSameVnode(oldEndVnode, newStartVnode)) { // 尾头比对
+            patchVnode(oldEndVnode, newStartVnode);
+            el.insertBefore(oldEndVnode.el, oldStartVnode.el)
+            oldEndVnode = oldChildren[--oldEndIndex];
+            newStartVnode = newChildren[++newStartIndex]
+        } else if (isSameVnode(oldStartVnode, newEndVnode)) { // 头尾比对
+            patchVnode(oldStartVnode, newEndVnode);
+            el.insertBefore(oldStartVnode.el, oldEndVnode.el.nextSibling)
+            oldStartVnode = oldChildren[++oldStartIndex];
+            newEndVnode = newChildren[--newEndIndex]
+        }
+        // 会根据key进行diff算法 ， 所以在使用的时候如果列表是可操作的，尽量避开用index作为key
+        else {
+            // 乱序比对 我们需要尽可能找出能复用的元素出来
+            let moveIndex = map[newStartVnode.key];
+            if (moveIndex == undefined) {
+                // 不用复用直接创建插入即可
+                el.insertBefore(createElm(newStartVnode), oldStartVnode.el)
+            } else {
+                // 有的话直接移动老的节点
+                let moveVnode = oldChildren[moveIndex];
+                oldChildren[moveIndex] = undefined
+                el.insertBefore(moveVnode.el, oldStartVnode.el);
+                patchVnode(moveVnode, newStartVnode); // 比属性 比儿子
+            }
+            newStartVnode = newChildren[++newStartIndex]
         }
     }
     if (newStartIndex <= newEndIndex) { // 将新增的直接插入
         for (let i = newStartIndex; i <= newEndIndex; i++) {
-            el.appendChild(createElm(newChildren[i]))
+            // 可能是像前面添加 还有可能是像后添加
+            // el.appendChild(createElm(newChildren[i]))
+            let nextEle = newChildren[newEndIndex + 1] == null ? null : newChildren[newEndIndex + 1].el;
+
+            // nextEle 可能是null 可能是一个dom元素
+            el.insertBefore(createElm(newChildren[i]), nextEle); // 如果anchor参照物是null 会被变成appendChild
         }
     }
+    if (oldStartIndex <= oldEndIndex) { // 老的多余的元素删除掉即可
+        for (let i = oldStartIndex; i <= oldEndIndex; i++) {
+            if (oldChildren[i] !== undefined) {
+                el.removeChild(oldChildren[i].el)
+            }
+        }
+    }
+    // Vue3采用了最长递增子序列，找到最长不需要移动的序列，从而减少了移动操作
 
 }

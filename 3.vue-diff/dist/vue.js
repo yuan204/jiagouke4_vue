@@ -651,16 +651,62 @@
     var newStartIndex = 0;
     var newEndIndex = newChildren.length - 1;
     var oldStartVnode = oldChildren[0];
-    oldChildren[oldEndIndex];
+    var oldEndVnode = oldChildren[oldEndIndex];
     var newStartVnode = newChildren[0];
-    newChildren[newEndIndex]; // 有一方比完就停止  儿子的规模变大而变大 O(n)
+    var newEndVnode = newChildren[newEndIndex]; // 有一方比完就停止  儿子的规模变大而变大 O(n)
+
+    function makeIndexByKey(children) {
+      return children.reduce(function (memo, current, index) {
+        return memo[current.key] = index, memo;
+      }, {});
+    }
+
+    var map = makeIndexByKey(oldChildren);
 
     while (oldStartIndex <= oldEndIndex && newStartIndex <= newEndIndex) {
+      // 这里在优化dom的常见操作 向前追加 向后追加  尾部移动头部
       // 复用节点
-      if (isSameVnode(oldStartVnode, newStartVnode)) {
+      if (!oldStartVnode) {
+        oldStartVnode = oldChildren[++oldStartIndex];
+      } else if (!oldEndVnode) {
+        oldEndVnode = oldChildren[--oldEndIndex];
+      } else if (isSameVnode(oldStartVnode, newStartVnode)) {
         // 说明两个元素是同一个元素 要比较属性，和他的儿子
         patchVnode(oldStartVnode, newStartVnode);
         oldStartVnode = oldChildren[++oldStartIndex];
+        newStartVnode = newChildren[++newStartIndex];
+      } else if (isSameVnode(oldEndVnode, newEndVnode)) {
+        patchVnode(oldEndVnode, newEndVnode);
+        oldEndVnode = oldChildren[--oldEndIndex];
+        newEndVnode = newChildren[--newEndIndex];
+      } else if (isSameVnode(oldEndVnode, newStartVnode)) {
+        // 尾头比对
+        patchVnode(oldEndVnode, newStartVnode);
+        el.insertBefore(oldEndVnode.el, oldStartVnode.el);
+        oldEndVnode = oldChildren[--oldEndIndex];
+        newStartVnode = newChildren[++newStartIndex];
+      } else if (isSameVnode(oldStartVnode, newEndVnode)) {
+        // 头尾比对
+        patchVnode(oldStartVnode, newEndVnode);
+        el.insertBefore(oldStartVnode.el, oldEndVnode.el.nextSibling);
+        oldStartVnode = oldChildren[++oldStartIndex];
+        newEndVnode = newChildren[--newEndIndex];
+      } // 会根据key进行diff算法 ， 所以在使用的时候如果列表是可操作的，尽量避开用index作为key
+      else {
+        // 乱序比对 我们需要尽可能找出能复用的元素出来
+        var moveIndex = map[newStartVnode.key];
+
+        if (moveIndex == undefined) {
+          // 不用复用直接创建插入即可
+          el.insertBefore(createElm(newStartVnode), oldStartVnode.el);
+        } else {
+          // 有的话直接移动老的节点
+          var moveVnode = oldChildren[moveIndex];
+          oldChildren[moveIndex] = undefined;
+          el.insertBefore(moveVnode.el, oldStartVnode.el);
+          patchVnode(moveVnode, newStartVnode); // 比属性 比儿子
+        }
+
         newStartVnode = newChildren[++newStartIndex];
       }
     }
@@ -668,9 +714,23 @@
     if (newStartIndex <= newEndIndex) {
       // 将新增的直接插入
       for (var i = newStartIndex; i <= newEndIndex; i++) {
-        el.appendChild(createElm(newChildren[i]));
+        // 可能是像前面添加 还有可能是像后添加
+        // el.appendChild(createElm(newChildren[i]))
+        var nextEle = newChildren[newEndIndex + 1] == null ? null : newChildren[newEndIndex + 1].el; // nextEle 可能是null 可能是一个dom元素
+
+        el.insertBefore(createElm(newChildren[i]), nextEle); // 如果anchor参照物是null 会被变成appendChild
       }
     }
+
+    if (oldStartIndex <= oldEndIndex) {
+      // 老的多余的元素删除掉即可
+      for (var _i = oldStartIndex; _i <= oldEndIndex; _i++) {
+        if (oldChildren[_i] !== undefined) {
+          el.removeChild(oldChildren[_i].el);
+        }
+      }
+    } // Vue3采用了最长递增子序列，找到最长不需要移动的序列，从而减少了移动操作
+
   }
 
   function lifeCycleMixin(Vue) {
@@ -965,27 +1025,6 @@
 
   lifeCycleMixin(Vue);
   Vue.prototype.$nextTick = nextTick; // 给Vue添加原型方法我们通过文件的方式来添加，防止所有的功能都在一个文件中来处理
-  var vm1 = new Vue({
-    data: {
-      name: 'zf',
-      age: 12
-    }
-  });
-  var template = "<div >\n    <li key=\"A\">A</li>\n    <li key=\"B\">B</li>\n    <li key=\"C\">C</li>\n    <li key=\"D\">D</li>\n</div>";
-  var render = compileToFunction(template);
-  var oldVnode = render.call(vm1);
-  var ele = createElm(oldVnode);
-  document.body.appendChild(ele); // 就让虚拟节点和真实节点做了映射
-  // diff算法的比对是平级比对
-  // 比对的时候 主要比对标签名和key 来判断是不是同一个元素 ，如果标签和key 都一样说明两个元素是同一个元素
-
-  var vm2 = new Vue({});
-  var newTemplate = "<div>\n    <li key=\"A\">A</li>\n    <li key=\"B\">B</li>\n    <li key=\"C\">C</li>\n    <li key=\"D\">D</li>\n    <li key=\"E\">E</li>\n</div>";
-  var newRender = compileToFunction(newTemplate);
-  var newVnode = newRender.call(vm2);
-  setTimeout(function () {
-    patch(oldVnode, newVnode);
-  }, 2000);
 
   return Vue;
 
