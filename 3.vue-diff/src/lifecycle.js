@@ -3,6 +3,14 @@ import { createElement, createTextNode } from "./vdom/index"
 import { patch } from "./vdom/patch"
 
 // 创造对应的虚拟节点 进行渲染
+
+
+export function callHook(vm,hook){
+   const handlers =  vm.$options[hook]
+   handlers && handlers.forEach(hook=>hook.call(vm))
+}
+
+
 export function lifeCycleMixin(Vue) {
     Vue.prototype._c = function() {
         return createElement(this, ...arguments)
@@ -25,7 +33,14 @@ export function lifeCycleMixin(Vue) {
     Vue.prototype._update = function(vnode) { // 将虚拟节点变成真实节点
         // 将vnode 渲染el元素中
         const vm = this;
-        vm.$el = patch(vm.$el,vnode); // 可以初始化渲染， 后续更新也走这个patch方法
+        const prevVnode = vm._vnode; // 上一次的vnode
+        if(!prevVnode){
+            vm.$el = patch(vm.$el,vnode); // 可以初始化渲染， 后续更新也走这个patch方法
+        }else{
+            vm.$el = patch(prevVnode,vnode);
+        }
+        vm._vnode = vnode; // 渲染完毕后更新vnode
+      
     }
 }
 // 将模板变成ast -> render  -> render函数产生虚拟节点(数据得是渲染好的)---|
@@ -33,7 +48,8 @@ export function lifeCycleMixin(Vue) {
 
 export function mountComponent(vm, el) {
     // 实现页面的挂载流程
-    vm.$el = el;// 先将el挂载到实例上 
+    vm.$el = el;// 先将el挂载到实例上
+    callHook('vm','beforeMount') 
     const updateComponent = () => {
         // 需要调用生成的render函数 获取到虚拟节点  -> 生成真实的dom
         vm._update(vm._render());

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+
+    <div id="app">
+    </div>
+    <script src="../dist/vue.js"></script>
+    <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.14/vue.js"></script> -->
+    <script>
+        // 生命周期的合并机制  实现默认合并 ， 实现针对不同的属性进行合并
+        Vue.mixin({
+            a:1,
+            c:3,
+            beforeCreate(){
+                console.log('mixin-1')
+            }
+        })
+        Vue.mixin({
+            b:2,
+            c:4,
+            beforeCreate(){
+                console.log('mixin-2')
+            }
+        });
+        let vm = new Vue({
+          el:'#app',
+          beforeCreate:[
+              function(){
+                  console.log('vm-1')
+              },
+              function(){
+                  console.log('vm-2')
+              }
+          ]
+        })
+    </script>
+</body>
+</html>

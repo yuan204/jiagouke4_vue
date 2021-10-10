@@ -1,6 +1,7 @@
 // 整个自己编写的Vue的入口
 
 
+import initGlobalAPI from "./globalAPI/index";
 import initMixin from "./init"
 import { lifeCycleMixin } from "./lifecycle";
 import { nextTick } from "./utils/nextTick";
@@ -13,7 +14,7 @@ function Vue(options) {
 initMixin(Vue); // 后续在扩展都可以采用这种方式
 lifeCycleMixin(Vue)
 
-
+initGlobalAPI(Vue)
 
 Vue.prototype.$nextTick = nextTick
 

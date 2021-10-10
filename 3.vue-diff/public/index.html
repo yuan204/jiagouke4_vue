@@ -9,10 +9,21 @@
 </head>
 
 <body>
-    <div id="app"></div>
+    <div id="app"><span>{{name}}</span></div>
     <script src="../dist/vue.js"></script>
+    <script>
+        const vm = new Vue({
+            el:'#app',
+            data:{
+                name:'zf'
+            }
+        });
+        setTimeout(() => {
+            vm.name = 'jw'
+        }, 1000);
+    </script>
 </body>
-
+    
 </html>
 
 

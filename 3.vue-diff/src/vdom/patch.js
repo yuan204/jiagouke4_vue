@@ -18,7 +18,8 @@ export function patch(oldVnode, vnode) { // oldVnode 可能是后续做虚拟节
         parentNode.removeChild(oldElm)
         return el;
     } else {
-        patchVnode(oldVnode, vnode)
+        patchVnode(oldVnode, vnode);
+        return vnode.el;
     }
     // diff算法
 }
